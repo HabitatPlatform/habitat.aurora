@@ -1,0 +1,15 @@
+﻿<nav class="mt-2">
+    <button class="btn btn-sm btn-outline-secondary me-2" disabled="@(@Page <= 1)" @onclick="() => Change(Page - 1)">«</button>
+    <span>Página @Page</span>
+    <button class="btn btn-sm btn-outline-secondary ms-2" disabled="@(!HasNext)" @onclick="() => Change(Page + 1)">»</button>
+</nav>
+
+@code {
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private bool HasNext => Total > Page * PageSize;
+    private async Task Change(int p) => await OnPageChanged.InvokeAsync(p);
+}

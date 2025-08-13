@@ -1,0 +1,83 @@
+﻿@page "/users"
+@using AuroraGate.Services
+@inject IUserService users
+
+<h3>Usuarios</h3>
+
+<div class="mb-3 d-flex gap-2">
+    <button class="btn btn-primary" @onclick="NewUser">Nuevo</button>
+    <input class="form-control" placeholder="Buscar por username/email" @bind="search" />
+    <button class="btn btn-secondary" @onclick="Load">Buscar</button>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Username</th><th>Email</th><th>Activo</th><th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var u in data)
+        {
+            <tr>
+                <td>@u.Username</td>
+                <td>@u.Email</td>
+                <td>@(u.IsActive ? "Sí" : "No")</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(u.Id)">Editar</button>
+                    <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => AskDelete(u.Id)">Eliminar</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<Pagination Total="@total" 
+    PageSize="@pageSize" OnPageChanged="OnPageChanged" />
+
+<UserForm @ref="formRef" OnSaved="OnSaved" />
+
+<ConfirmDialog @ref="confirmRef" Title="Eliminar usuario"
+               Message="¿Seguro que deseas eliminar este usuario?"
+               OnConfirm="ConfirmDelete" />
+
+@code {
+    private List<UserRow> data = new();
+    private int total;
+    private int page = 1;
+    private int pageSize = 20;
+    private string? search;
+
+    private Guid pendingDeleteId;
+    private UserForm? formRef;
+    private ConfirmDialog? confirmRef;
+
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var all = await users.ListAsync((page - 1) * pageSize, pageSize, CancellationToken.None);
+        var list = all.ToList();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            list = list.Where(x => x.Username.Contains(search, StringComparison.OrdinalIgnoreCase)
+                                || x.Email.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        data = list.Select(x => new UserRow(x.Id, x.Username, x.Email, x.IsActive)).ToList();
+        total = data.Count;
+        // normalmente no necesitas StateHasChanged aquí;
+        // si lo llamas después de await, usa la versión segura:
+        // await InvokeAsync(StateHasChanged);
+    }
+
+    private void NewUser() => formRef!.OpenNew();
+    private async Task Edit(Guid id) => await formRef!.OpenEdit(id);
+    private void AskDelete(Guid id) { pendingDeleteId = id; confirmRef!.Open(); }
+    private async Task ConfirmDelete() { await users.DeleteAsync(pendingDeleteId, CancellationToken.None); await Load(); }
+    private async Task OnSaved() => await Load();
+
+    public record UserRow(Guid Id, string Username, string Email, bool IsActive);
+
+    private async Task OnPageChanged(int newPage) { page = newPage; await Load(); }
+}

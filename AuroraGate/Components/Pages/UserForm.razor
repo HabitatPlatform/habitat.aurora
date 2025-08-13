@@ -1,0 +1,134 @@
+﻿@using System.ComponentModel.DataAnnotations
+@using AuroraGate.Services
+@inject IUserService users
+
+@if (open)
+{
+<div class="card p-3 mb-3">
+    <h5>@(isEdit ? "Editar usuario" : "Nuevo usuario")</h5>
+    <EditForm Model="@model" OnValidSubmit="@Save">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="mb-2">
+            <label>Username</label>
+            <InputText class="form-control" @bind-Value="model.Username" disabled="@isEdit" />
+        </div>
+        <div class="mb-2">
+            <label>Email</label>
+            <InputText class="form-control" @bind-Value="model.Email" />
+        </div>
+        <div class="mb-2">
+            <label>Rol</label>
+            <InputText class="form-control" @bind-Value="model.Role" />
+        </div>
+
+        <AuthorizeView Roles="admin">
+            <div class="form-check mb-2">
+                <InputCheckbox class="form-check-input" @bind-Value="model.IsActive" />
+                <label class="form-check-label">Activo</label>
+            </div>
+        </AuthorizeView>
+
+        <div class="mb-2">
+            <label>@(isEdit ? "Nueva contraseña (opcional)" : "Contraseña")</label>
+            <InputText type="password" class="form-control" @bind-Value="model.Password" />
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+            <button class="btn btn-secondary" type="button" @onclick="Close">Cancelar</button>
+        </div>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="text-danger mt-2">@error</div>
+    }
+</div>
+}
+
+@code {
+    private bool open;
+    private bool isEdit;
+    private string? error;
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private UserVm model = new();
+
+    public async Task OpenEdit(Guid id)
+    {
+        var u = await users.GetAsync(id, CancellationToken.None);
+        if (u is null) return;
+        model = new()
+        {
+            Id = u.Id,
+            Username = u.Username,
+            Email = u.Email,
+            Role = u.UserRoles.Select(r => r.Role.Name).FirstOrDefault() ?? "user",
+            IsActive = u.IsActive
+        };
+        isEdit = true; open = true; StateHasChanged();
+    }
+
+    public void OpenNew()
+    {
+        model = new();
+        isEdit = false; open = true; StateHasChanged();
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            if (isEdit)
+            {
+                await users.UpdateAsync(model.Id!.Value, model.Email, model.IsActive,
+                                        string.IsNullOrWhiteSpace(model.Password) ? null : model.Password,
+                                        model.Role, CancellationToken.None);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(model.Password))
+                {
+                    error = "La contraseña es obligatoria para crear un usuario.";
+                    return;
+                }
+                await users.CreateAsync(model.Username, model.Email, model.Password, model.Role, CancellationToken.None);
+            }
+
+            error = null;
+            Close();
+
+            if (OnSaved.HasDelegate)
+                await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void Close() { open = false; StateHasChanged(); }
+
+    public class UserVm
+    {
+        public Guid? Id { get; set; }
+
+        [Required, MinLength(3)]
+        public string Username { get; set; } = "";
+
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+
+        public bool IsActive { get; set; } = true;
+
+        // Para crear o cambiar (opcional en edición)
+        [MinLength(6)]
+        public string? Password { get; set; }
+
+        public string? Role { get; set; } = "user";
+    }
+}
+
